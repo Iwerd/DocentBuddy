@@ -1,7 +1,7 @@
 import logging, json, pytz, datetime, schedule, time, random, requests
 from threading import Thread
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, filters, ContextTypes
 
 (THEME_SELECTION, NAME, BIRTHDAY, CITY, PROFESSION, SLEEP, GOALS, HOBBIES, MORNING_PRODUCTIVITY, NOTIFY_TIME) = range(10)
 
@@ -36,86 +36,41 @@ def save_users():
 async def send_personalized(uid, context): ...
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! Давай сначала выберем, какие темы тебе интересны.\n"
-        "Введи через запятую или пробел несколько тем из списка:\n"
-        + ", ".join([t.split()[1] for t in TOPICS])
-    )
+    context.user_data['interests'] = []
+    keyboard = [[InlineKeyboardButton(t, callback_data=t)] for t in TOPICS] + [[InlineKeyboardButton("✅ Готово", callback_data="done")]]
+    await update.message.reply_text("Привет! Выбери интересующие тебя темы:", reply_markup=InlineKeyboardMarkup(keyboard))
     return THEME_SELECTION
 
-async def get_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = str(update.effective_user.id)
-    selected = update.message.text.replace("\n", ",").replace(";", ",")
-    chosen = [topic.strip() for topic in selected.split(",") if topic.strip() in [t.split()[1] for t in TOPICS]]
-    full_chosen = [t for t in TOPICS if t.split()[1] in chosen]
-    if not full_chosen:
-        await update.message.reply_text("Не удалось распознать интересы. Попробуй ещё раз:")
-        return THEME_SELECTION
-    context.user_data['interests'] = full_chosen
-    await update.message.reply_text("Как тебя зовут?", reply_markup=skip_markup())
-    return NAME
+async def theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    choice = query.data
+    if choice == "done":
+        if not context.user_data["interests"]:
+            await query.edit_message_text("Вы не выбрали ни одной темы. Пожалуйста, выбери хотя бы одну.")
+            return THEME_SELECTION
+        await query.edit_message_text("Как тебя зовут?", reply_markup=skip_markup())
+        return NAME
+    if choice not in context.user_data["interests"]:
+        context.user_data["interests"].append(choice)
+    await query.edit_message_text(f"Добавлено: {choice}\n\nВыбери ещё или нажми ✅ Готово:", reply_markup=InlineKeyboardMarkup(
+        [[InlineKeyboardButton(t + (" ✅" if t in context.user_data['interests'] else ""), callback_data=t)] for t in TOPICS] + [[InlineKeyboardButton("✅ Готово", callback_data="done")]]))
+    return THEME_SELECTION
 
 def skip_markup():
     return ReplyKeyboardMarkup([["Пропустить"]], resize_keyboard=True, one_time_keyboard=True)
 
-async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text != "Пропустить":
-        context.user_data["name"] = text
-    else:
-        context.user_data["name"] = ""
-    await update.message.reply_text("Когда у тебя день рождения? (ДД.ММ)", reply_markup=skip_markup())
-    return BIRTHDAY
-
-async def get_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text != "Пропустить":
-        try:
-            day, month = map(int, text.split("."))
-            zodiac = get_zodiac(day, month)
-            context.user_data["zodiac"] = zodiac
-        except:
-            await update.message.reply_text("Формат даты неверный. Пример: 24.09")
-            return BIRTHDAY
-    else:
-        context.user_data["zodiac"] = ""
-    await update.message.reply_text("В каком ты городе?", reply_markup=skip_markup())
-    return CITY
-
-async def get_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    context.user_data["city"] = text if text != "Пропустить" else ""
-    await update.message.reply_text("Чем ты занимаешься? (профессия/деятельность)", reply_markup=skip_markup())
-    return PROFESSION
-
-async def get_profession(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["profession"] = update.message.text if update.message.text != "Пропустить" else ""
-    await update.message.reply_text("Сколько ты обычно спишь в сутки (в часах)?", reply_markup=skip_markup())
-    return SLEEP
-
-async def get_sleep(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["sleep"] = update.message.text if update.message.text != "Пропустить" else ""
-    await update.message.reply_text("Какие цели ставишь перед собой на этот месяц?", reply_markup=skip_markup())
-    return GOALS
-
-async def get_goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["goals"] = update.message.text if update.message.text != "Пропустить" else ""
-    await update.message.reply_text("Чем ты любишь заниматься в свободное время?", reply_markup=skip_markup())
-    return HOBBIES
-
-async def get_hobbies(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["hobbies"] = update.message.text if update.message.text != "Пропустить" else ""
-    await update.message.reply_text("Как ты оцениваешь свою продуктивность утром? (низкая / средняя / высокая)", reply_markup=skip_markup())
-    return MORNING_PRODUCTIVITY
-
-async def get_productivity_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["morning"] = update.message.text if update.message.text != "Пропустить" else ""
-    await update.message.reply_text("Во сколько тебе удобно получать утренние сообщения? (например, 08:00)", reply_markup=skip_markup())
-    return NOTIFY_TIME
-
+async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
+async def get_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
+async def get_city(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
+async def get_profession(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
+async def get_sleep(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
+async def get_goals(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
+async def get_hobbies(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
+async def get_productivity_level(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
 async def get_notify_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["notify"] = update.message.text if update.message.text != "Пропустить" else "08:00"
     uid = str(update.effective_user.id)
+    context.user_data["notify"] = update.message.text if update.message.text != "Пропустить" else "08:00"
     users[uid] = {
         "name": context.user_data.get("name", ""),
         "zodiac": context.user_data.get("zodiac", ""),
@@ -142,7 +97,7 @@ if __name__ == "__main__":
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            THEME_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_themes)],
+            THEME_SELECTION: [CallbackQueryHandler(theme_selection)],
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             BIRTHDAY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_birthday)],
             CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_city)],
