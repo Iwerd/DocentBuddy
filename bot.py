@@ -56,8 +56,8 @@ async def theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("Пожалуйста, выбери хотя бы одну тему.")
             return THEME_SELECTION
         await query.edit_message_reply_markup(reply_markup=None)
-    await asyncio.sleep(0.5)
-    await query.message.reply_text("Как тебя зовут?", reply_markup=skip_markup())
+        await asyncio.sleep(0.5)
+        await query.message.reply_text("Как тебя зовут?", reply_markup=skip_markup())
         return NAME
     # добавление/удаление выбора
     if choice in context.user_data["interests"]:
@@ -68,7 +68,7 @@ async def theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return THEME_SELECTION
 
 def skip_markup():
-    return ReplyKeyboardMarkup([["Пропустить"]], resize_keyboard=True, one_time_keyboard=True)
+    return ReplyKeyboardMarkup(["Пропустить"], resize_keyboard=True, one_time_keyboard=True)
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
 async def get_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
