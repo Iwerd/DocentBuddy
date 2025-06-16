@@ -2,3 +2,4 @@ python-telegram-bot==20.8
 schedule
 pytz
 requests
+openai==1.14.3
