@@ -4,6 +4,7 @@ import pytz
 import datetime
 import schedule
 import time
+import random
 from threading import Thread
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -11,10 +12,8 @@ from telegram.ext import (
     ConversationHandler, filters, ContextTypes
 )
 
-# Стадии диалога
 NAME, BIRTHDAY, CITY, TIME, INTERESTS = range(5)
 
-# Интересы пользователя
 TOPICS = [
     "💰 Криптовалюта",
     "🧙 Гороскоп",
@@ -22,28 +21,33 @@ TOPICS = [
     "💄 Красота",
     "🧘‍♀️ Здоровье",
     "☀️ Погода",
-    "🧠 Факт дня"
+    "🧠 Факт дня",
+    "💼 Продуктивность",
+    "🧠 Цитата дня",
+    "💹 Курс валют / крипты",
+    "🍽 Совет по питанию",
+    "🎬 Рекомендация дня",
+    "🎉 Личные напоминания",
+    "✅ To-do задачи"
 ]
 
-# Загрузка и сохранение пользователей
+users = {}
+reminders = {}
+todos = {}
 
-def load_users():
-    try:
-        with open("users.json", "r") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_users(users):
-    with open("users.json", "w") as f:
-        json.dump(users, f, indent=2)
-
-users = load_users()
-
-# Логгирование
 logging.basicConfig(level=logging.INFO)
 
-# Определение знака зодиака
+def load_users():
+    global users
+    try:
+        with open("users.json", "r") as f:
+            users = json.load(f)
+    except:
+        users = {}
+
+def save_users():
+    with open("users.json", "w") as f:
+        json.dump(users, f, indent=2)
 
 def get_zodiac(day, month):
     zodiac = [
@@ -56,8 +60,6 @@ def get_zodiac(day, month):
     if day < zodiac[month - 1][0]:
         return zodiac[month - 1][1]
     return zodiac[month][1]
-
-# Диалоговые этапы
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Как тебя зовут?")
@@ -92,10 +94,7 @@ async def ask_interests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[topic] for topic in TOPICS] + [["✅ Готово"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     context.user_data["interests"] = []
-    await update.message.reply_text(
-        "Выбери, что тебе интересно (можно несколько). Когда закончишь — нажми «Готово».",
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text("Выбери, что тебе интересно (можно несколько). Когда закончишь — нажми «Готово».", reply_markup=reply_markup)
     return INTERESTS
 
 async def collect_interests(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,11 +102,8 @@ async def collect_interests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if choice == "✅ Готово":
         user_id = str(update.message.chat_id)
         users[user_id] = context.user_data
-        save_users(users)
-        await update.message.reply_text(
-            f"Спасибо! С завтрашнего дня я буду присылать тебе полезную информацию по темам: {', '.join(context.user_data['interests'])}.",
-            reply_markup=ReplyKeyboardRemove()
-        )
+        save_users()
+        await update.message.reply_text(f"Спасибо! С завтрашнего дня я буду присылать тебе полезную информацию по темам: {', '.join(context.user_data['interests'])}.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
     elif choice in TOPICS:
         if choice not in context.user_data["interests"]:
@@ -119,61 +115,80 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Окей, если что — напиши /start.")
     return ConversationHandler.END
 
-# Отладочная команда /test
-async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.chat_id)
-    data = users.get(user_id)
+    task = " ".join(context.args)
+    if user_id not in todos:
+        todos[user_id] = []
+    todos[user_id].append(task)
+    await update.message.reply_text(f"Задача добавлена: {task}")
 
+async def add_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.chat_id)
+    parts = update.message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        await update.message.reply_text("Формат: /adddate 25.06 День рождения мамы")
+        return
+    date, note = parts[1], parts[2]
+    if user_id not in reminders:
+        reminders[user_id] = []
+    reminders[user_id].append((date, note))
+    await update.message.reply_text(f"Напоминание добавлено: {note} на {date}")
+
+async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_personalized_message(update.message.chat_id, context)
+
+async def send_personalized_message(user_id, context):
+    user_id = str(user_id)
+    data = users.get(user_id)
     if not data:
-        await update.message.reply_text("Ты ещё не прошёл настройку. Напиши /start.")
         return
 
+    today = datetime.datetime.now().strftime("%d.%m")
     text = f"Доброе утро, {data['name']}! 🌞\n"
     for topic in data.get("interests", []):
         if "Гороскоп" in topic:
-            text += f"🧙 Гороскоп для {data['zodiac']}: сегодня стоит доверять интуиции.\n"
+            text += f"🧙 Гороскоп ({data['zodiac']}): сегодня интуиция поможет принять верные решения.\n"
         if "Криптовалюта" in topic:
-            text += "💰 Биткойн подрос на 2%, но сохраняй внимательность.\n"
+            text += "💰 Курс BTC: $65,430, ETH: $3,270.\n"
         if "Игры" in topic:
-            text += "🕹 Вышло обновление для Cyberpunk 2077.\n"
+            text += "🕹 Новинка: обновление для Cyberpunk 2077 доступно!\n"
         if "Красота" in topic:
-            text += "💄 Увлажняющие сыворотки особенно актуальны летом.\n"
+            text += "💄 Совет: летом важно использовать SPF.\n"
         if "Здоровье" in topic:
-            text += "🧘‍♀️ Не забудь сделать разминку и выпить воды 💧\n"
+            text += "🧘‍♀️ Пей воду и делай разминку — здоровье важнее всего.\n"
         if "Погода" in topic:
-            text += f"☀️ В {data['city']} ожидается тепло и солнце.\n"
+            text += f"☀️ Погода в {data['city']}: +23°, ясно.\n"
         if "Факт дня" in topic:
-            text += "🧠 Факт: у осьминогов 3 сердца!\n"
+            text += "🧠 Факт: у осьминогов три сердца!\n"
+        if "Продуктивность" in topic:
+            text += "💼 Совет: используй правило 1-3-5 для планирования задач.\n"
+        if "Цитата дня" in topic:
+            text += "🧠 Цитата: «Делай или не делай. Нет попыток.» — Йода\n"
+        if "Курс валют / крипты" in topic:
+            text += "💹 USD: 1.09 | EUR: 1.00 | BTC: $65,000\n"
+        if "Совет по питанию" in topic:
+            text += "🍽 Завтрак: овсянка с орехами и ягодами — заряд на день.\n"
+        if "Рекомендация дня" in topic:
+            choice = random.choice(["Книга: 'Атлант расправил плечи'", "Фильм: 'Интерстеллар'", "Игра: 'Hades'"])
+            text += f"🎬 Рекомендация: {choice}\n"
+        if "Личные напоминания" in topic and user_id in reminders:
+            for date, note in reminders[user_id]:
+                if date == today:
+                    text += f"🎉 Сегодня: {note}!\n"
+        if "To-do задачи" in topic and user_id in todos:
+            text += "✅ Задачи на день:\n" + "\n".join([f"- {t}" for t in todos[user_id]]) + "\n"
 
-    await update.message.reply_text(text)
+    try:
+        await context.bot.send_message(chat_id=int(user_id), text=text)
+    except Exception as e:
+        print(f"Ошибка при отправке {user_id}: {e}")
 
-# Ежедневная отправка сообщений
 async def send_daily_messages(application):
     now = datetime.datetime.now(pytz.timezone("Europe/Brussels")).strftime("%H:%M")
     for user_id, data in users.items():
         if data.get("time") == now:
-            text = f"Доброе утро, {data['name']}! 🌞\n"
-            for topic in data.get("interests", []):
-                if "Гороскоп" in topic:
-                    text += f"🧙 Гороскоп для {data['zodiac']}: сегодня стоит доверять интуиции.\n"
-                if "Криптовалюта" in topic:
-                    text += "💰 Биткойн подрос на 2%, но сохраняй внимательность.\n"
-                if "Игры" in topic:
-                    text += "🕹 Вышло обновление для Cyberpunk 2077.\n"
-                if "Красота" in topic:
-                    text += "💄 Увлажняющие сыворотки особенно актуальны летом.\n"
-                if "Здоровье" in topic:
-                    text += "🧘‍♀️ Не забудь сделать разминку и выпить воды 💧\n"
-                if "Погода" in topic:
-                    text += f"☀️ В {data['city']} ожидается тепло и солнце.\n"
-                if "Факт дня" in topic:
-                    text += "🧠 Факт: у осьминогов 3 сердца!\n"
-            try:
-                await application.bot.send_message(chat_id=int(user_id), text=text)
-            except Exception as e:
-                print(f"Ошибка при отправке пользователю {user_id}: {e}")
-
-# Планировщик
+            await send_personalized_message(user_id, application)
 
 def scheduler(application):
     schedule.every().minute.do(lambda: application.create_task(send_daily_messages(application)))
@@ -181,8 +196,8 @@ def scheduler(application):
         schedule.run_pending()
         time.sleep(1)
 
-# Запуск
 if __name__ == "__main__":
+    load_users()
     TOKEN = "7855248264:AAEvDeAi-3lC5hbsI3y_H8qYG22aitUzT88"
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -200,6 +215,8 @@ if __name__ == "__main__":
 
     app.add_handler(conv)
     app.add_handler(CommandHandler("test", test))
+    app.add_handler(CommandHandler("addtask", add_task))
+    app.add_handler(CommandHandler("adddate", add_date))
 
     Thread(target=scheduler, args=(app,), daemon=True).start()
 
