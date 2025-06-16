@@ -16,7 +16,6 @@ logging.basicConfig(level=logging.INFO)
 
 TOKEN = "7855248264:AAEvDeAi-3lC5hbsI3y_H8qYG22aitUzT88"
 OWM_KEY = "bb4019aa070450b7031cee639418b585"
-ASTROLOGY_KEY = "U8aD3ZQKnl9qINCHFaa6b4wslb0tyJD15Ii21RBk"
 
 zodiac_map = {
     "Овен": "aries", "Телец": "taurus", "Близнецы": "gemini", "Рак": "cancer",
@@ -47,21 +46,35 @@ def get_weather(city):
     except:
         return "☀️ Погода недоступна."
 
-def get_horoscope(sign):
-    try:
-        eng_sign = zodiac_map.get(sign, "libra")
-        r = requests.post(
-            "https://api.freeastrologyapi.com/dailyhoroscope",
-            headers={
-                "x-api-key": ASTROLOGY_KEY,
-                "Content-Type": "application/json"
-            },
-            json={"zodiacName": eng_sign}
-        )
-        d = r.json()
-        return f"🧙 *Гороскоп для {sign}*:\n\n{d['horoscope']}"
-    except Exception as e:
-        return f"🧙 Гороскоп недоступен. ({e})"
+def get_generated_horoscope(sign):
+    blocks = {
+        "work": [
+            "Сосредоточься на приоритетных задачах — день обещает быть продуктивным.",
+            "Не торопись принимать решения на работе — сначала всё взвесь.",
+            "Прояви инициативу — это может принести неожиданный успех."
+        ],
+        "health": [
+            "Организм требует отдыха. Не пренебрегай полноценным сном.",
+            "Лёгкая физическая активность улучшит настроение и тонус.",
+            "Питайся сбалансированно, особенно избегай лишнего сахара."
+        ],
+        "emotion": [
+            "День подойдёт для общения с близкими и укрепления связей.",
+            "Старайся избегать конфликтов — спокойствие принесёт победу.",
+            "Прислушайся к интуиции — она сегодня особенно точна."
+        ],
+        "advice": [
+            "Совет: не забывай про личные цели — даже в суете дня.",
+            "Совет: удели время себе — прогулка или книга зарядят энергией.",
+            "Совет: новые идеи сегодня особенно перспективны — запиши их."
+        ]
+    }
+    text = f"🧙 *Гороскоп для {sign}*:\n\n"
+    text += random.choice(blocks["work"]) + "\n"
+    text += random.choice(blocks["health"]) + "\n"
+    text += random.choice(blocks["emotion"]) + "\n"
+    text += "\n" + random.choice(blocks["advice"])
+    return text
 
 def get_quote():
     q,a = random.choice([
@@ -104,7 +117,7 @@ async def send_personalized(uid, context):
     for t in d["interests"]:
         if "Криптовалюта" in t: text += get_crypto() + "\n\n"
         if "Погода" in t: text += get_weather(d["city"]) + "\n\n"
-        if "Гороскоп" in t: text += get_horoscope(d["zodiac"]) + "\n\n"
+        if "Гороскоп" in t: text += get_generated_horoscope(d["zodiac"]) + "\n\n"
         if "Цитата дня" in t: text += get_quote() + "\n\n"
         if "Продуктивность" in t: text += get_productivity() + "\n\n"
         if "Совет по питанию" in t: text += get_food_advice() + "\n\n"
@@ -116,79 +129,3 @@ async def send_personalized(uid, context):
         if "To‑do задачи" in t and todos.get(uid):
             text += "✅ *Задачи на сегодня:*\n" + "\n".join(f"- {x}" for x in todos[uid]) + "\n\n"
     await context.bot.send_message(chat_id=int(uid), text=text, parse_mode="Markdown")
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Как тебя зовут?")
-    return NAME
-
-async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["name"] = update.message.text
-    await update.message.reply_text("Когда у тебя день рождения? (в формате ДД.ММ)")
-    return BIRTHDAY
-
-async def get_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        day, month = map(int, update.message.text.split("."))
-        zodiac = get_zodiac(day, month)
-        context.user_data["zodiac"] = zodiac
-        await update.message.reply_text("В каком ты городе?")
-        return CITY
-    except:
-        await update.message.reply_text("Пожалуйста, введи дату в формате ДД.ММ")
-        return BIRTHDAY
-
-async def get_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["city"] = update.message.text
-    reply_keyboard = [[t] for t in TOPICS]
-    await update.message.reply_text("Выбери интересующие тебя темы:",
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True))
-    return INTERESTS
-
-async def get_interests(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = str(update.effective_user.id)
-    users[uid] = {
-        "name": context.user_data["name"],
-        "zodiac": context.user_data["zodiac"],
-        "city": context.user_data["city"],
-        "interests": [update.message.text]
-    }
-    save_users()
-    await update.message.reply_text("Спасибо! Я буду присылать тебе персональные советы каждый день."
-        , reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
-async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_personalized(update.effective_user.id, context)
-
-if __name__ == "__main__":
-    load_users()
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    conv = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            BIRTHDAY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_birthday)],
-            CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_city)],
-            INTERESTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_interests)],
-        },
-        fallbacks=[]
-    )
-
-    app.add_handler(conv)
-    app.add_handler(CommandHandler("test", test))
-
-    def run_scheduler():
-        while True:
-            schedule.run_pending()
-            time.sleep(10)
-
-    def schedule_job():
-        for uid in users:
-            app.create_task(send_personalized(uid, app))
-
-    schedule.every().day.at("08:00").do(schedule_job)
-    Thread(target=run_scheduler, daemon=True).start()
-
-    print("Бот запущен")
-    app.run_polling()
