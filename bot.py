@@ -17,12 +17,12 @@ NAME, BIRTHDAY, CITY, TIME, INTERESTS = range(5)
 # Интересы пользователя
 TOPICS = [
     "💰 Криптовалюта",
-    "🤙 Гороскоп",
-    "🔹 Игры",
-    "💅 Красота",
+    "🧙 Гороскоп",
+    "🕹 Игры",
+    "💄 Красота",
     "🧘‍♀️ Здоровье",
     "☀️ Погода",
-    "🧐 Факт дня"
+    "🧠 Факт дня"
 ]
 
 # Загрузка и сохранение пользователей
@@ -119,28 +119,55 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Окей, если что — напиши /start.")
     return ConversationHandler.END
 
-# Ежедневная отправка сообщений
+# Отладочная команда /test
+async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.chat_id)
+    data = users.get(user_id)
 
+    if not data:
+        await update.message.reply_text("Ты ещё не прошёл настройку. Напиши /start.")
+        return
+
+    text = f"Доброе утро, {data['name']}! 🌞\n"
+    for topic in data.get("interests", []):
+        if "Гороскоп" in topic:
+            text += f"🧙 Гороскоп для {data['zodiac']}: сегодня стоит доверять интуиции.\n"
+        if "Криптовалюта" in topic:
+            text += "💰 Биткойн подрос на 2%, но сохраняй внимательность.\n"
+        if "Игры" in topic:
+            text += "🕹 Вышло обновление для Cyberpunk 2077.\n"
+        if "Красота" in topic:
+            text += "💄 Увлажняющие сыворотки особенно актуальны летом.\n"
+        if "Здоровье" in topic:
+            text += "🧘‍♀️ Не забудь сделать разминку и выпить воды 💧\n"
+        if "Погода" in topic:
+            text += f"☀️ В {data['city']} ожидается тепло и солнце.\n"
+        if "Факт дня" in topic:
+            text += "🧠 Факт: у осьминогов 3 сердца!\n"
+
+    await update.message.reply_text(text)
+
+# Ежедневная отправка сообщений
 async def send_daily_messages(application):
     now = datetime.datetime.now(pytz.timezone("Europe/Brussels")).strftime("%H:%M")
     for user_id, data in users.items():
         if data.get("time") == now:
-            text = f"Доброе утро, {data['name']}! \ud83c\udf1e\n"
+            text = f"Доброе утро, {data['name']}! 🌞\n"
             for topic in data.get("interests", []):
                 if "Гороскоп" in topic:
-                    text += f"🤙 Гороскоп для {data['zodiac']}: сегодня стоит доверять интуиции.\n"
+                    text += f"🧙 Гороскоп для {data['zodiac']}: сегодня стоит доверять интуиции.\n"
                 if "Криптовалюта" in topic:
-                    text += "💰 Биткойн поднялся на 2%, но сохраняй внимательность.\n"
+                    text += "💰 Биткойн подрос на 2%, но сохраняй внимательность.\n"
                 if "Игры" in topic:
-                    text += "🔹 Вышел патч для Cyberpunk 2077.\n"
+                    text += "🕹 Вышло обновление для Cyberpunk 2077.\n"
                 if "Красота" in topic:
-                    text += "💅 Увлажняющие сысыворотки особенно актуальны летом.\n"
+                    text += "💄 Увлажняющие сыворотки особенно актуальны летом.\n"
                 if "Здоровье" in topic:
                     text += "🧘‍♀️ Не забудь сделать разминку и выпить воды 💧\n"
                 if "Погода" in topic:
                     text += f"☀️ В {data['city']} ожидается тепло и солнце.\n"
                 if "Факт дня" in topic:
-                    text += "🧐 Факт: у осьминогов 3 сердца!\n"
+                    text += "🧠 Факт: у осьминогов 3 сердца!\n"
             try:
                 await application.bot.send_message(chat_id=int(user_id), text=text)
             except Exception as e:
@@ -172,6 +199,7 @@ if __name__ == "__main__":
     )
 
     app.add_handler(conv)
+    app.add_handler(CommandHandler("test", test))
 
     Thread(target=scheduler, args=(app,), daemon=True).start()
 
