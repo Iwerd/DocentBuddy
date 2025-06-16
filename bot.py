@@ -37,9 +37,13 @@ async def send_personalized(uid, context): ...
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['interests'] = []
-    keyboard = [[InlineKeyboardButton(t, callback_data=t)] for t in TOPICS] + [[InlineKeyboardButton("✅ Готово", callback_data="done")]]
-    await update.message.reply_text("Привет! Выбери интересующие тебя темы:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text("Привет! Выбери интересующие тебя темы:", reply_markup=generate_topic_markup([]))
     return THEME_SELECTION
+
+def generate_topic_markup(selected):
+    keyboard = [[InlineKeyboardButton(t + (" ✅" if t in selected else ""), callback_data=t)] for t in TOPICS]
+    keyboard.append([InlineKeyboardButton("✅ Готово", callback_data="done")])
+    return InlineKeyboardMarkup(keyboard)
 
 async def theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -47,14 +51,18 @@ async def theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choice = query.data
     if choice == "done":
         if not context.user_data["interests"]:
-            await query.edit_message_text("Вы не выбрали ни одной темы. Пожалуйста, выбери хотя бы одну.")
+            await query.edit_message_reply_markup(reply_markup=generate_topic_markup([]))
+            await query.edit_message_text("Пожалуйста, выбери хотя бы одну тему.")
             return THEME_SELECTION
-        await query.edit_message_text("Как тебя зовут?", reply_markup=skip_markup())
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("Как тебя зовут?", reply_markup=skip_markup())
         return NAME
-    if choice not in context.user_data["interests"]:
+    # добавление/удаление выбора
+    if choice in context.user_data["interests"]:
+        context.user_data["interests"].remove(choice)
+    else:
         context.user_data["interests"].append(choice)
-    await query.edit_message_text(f"Добавлено: {choice}\n\nВыбери ещё или нажми ✅ Готово:", reply_markup=InlineKeyboardMarkup(
-        [[InlineKeyboardButton(t + (" ✅" if t in context.user_data['interests'] else ""), callback_data=t)] for t in TOPICS] + [[InlineKeyboardButton("✅ Готово", callback_data="done")]]))
+    await query.edit_message_reply_markup(reply_markup=generate_topic_markup(context.user_data["interests"]))
     return THEME_SELECTION
 
 def skip_markup():
@@ -68,24 +76,7 @@ async def get_sleep(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
 async def get_goals(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
 async def get_hobbies(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
 async def get_productivity_level(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
-async def get_notify_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = str(update.effective_user.id)
-    context.user_data["notify"] = update.message.text if update.message.text != "Пропустить" else "08:00"
-    users[uid] = {
-        "name": context.user_data.get("name", ""),
-        "zodiac": context.user_data.get("zodiac", ""),
-        "city": context.user_data.get("city", ""),
-        "interests": context.user_data.get("interests", []),
-        "profession": context.user_data.get("profession", ""),
-        "sleep": context.user_data.get("sleep", ""),
-        "goals": context.user_data.get("goals", ""),
-        "hobbies": context.user_data.get("hobbies", ""),
-        "morning": context.user_data.get("morning", ""),
-        "notify": context.user_data.get("notify", "08:00")
-    }
-    save_users()
-    await update.message.reply_text("Спасибо! Я буду присылать тебе персональные советы каждый день.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
+async def get_notify_time(update: Update, context: ContextTypes.DEFAULT_TYPE): ...
 
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_personalized(update.effective_user.id, context)
