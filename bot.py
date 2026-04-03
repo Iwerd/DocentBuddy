@@ -36,8 +36,8 @@ from telegram.ext import (
     NOTIFY_TIME,
 ) = range(10)
 
-TOKEN = "7855248264:AAEvDeAi-3lC5hbsI3y_H8qYG22aitUzT88"
-OPENAI_API_KEY = "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"
+TOKEN = "TOKEN HERE"
+OPENAI_API_KEY = "API HERE"
 
 openai.api_key = OPENAI_API_KEY
 users = {}
